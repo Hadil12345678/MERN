@@ -3,20 +3,20 @@ const express = require('express');
 const router = express.Router();
 
 const articleController = require('../controllers/articleController');
+const { protect } = require('../Middlewares/authMiddleware');
 
-// GET : récupérer tous les articles
+// Public routes
 router.get('/', articleController.getAllArticles);
 
-// GET : récupérer un article par son ID
+// Protected route: get only the logged-in user's articles
+// IMPORTANT: this route must be before /:id
+router.get('/my-articles', protect, articleController.getMyArticles);
+
 router.get('/:id', articleController.getArticleById);
 
-// POST : créer un nouvel article
-router.post('/', articleController.createArticle);
-
-// PUT : modifier un article
-router.put('/:id', articleController.updateArticle);
-
-// DELETE : supprimer un article
-router.delete('/:id', articleController.deleteArticle);
+// Protected routes
+router.post('/', protect, articleController.createArticle);
+router.put('/:id', protect, articleController.updateArticle);
+router.delete('/:id', protect, articleController.deleteArticle);
 
 module.exports = router;

@@ -1,13 +1,11 @@
 
 const Article = require('../models/articleModel');
 
-// 1. GET /api/articles
-// Récupérer tous les articles avec les informations de leur auteur
+// GET all articles
 const getAllArticles = async (req, res) => {
   try {
     const filter = {};
 
-    // Filtre optionnel : ?author=USER_ID
     if (req.query.author) {
       filter.author = req.query.author;
     }
@@ -22,7 +20,7 @@ const getAllArticles = async (req, res) => {
   } catch (error) {
     if (error.name === 'CastError') {
       return res.status(400).json({
-        message: 'Invalid resource identifier (ObjectId expected)'
+        message: 'Invalid resource identifier'
       });
     }
 
@@ -32,8 +30,7 @@ const getAllArticles = async (req, res) => {
   }
 };
 
-// 2. GET /api/articles/:id
-// Récupérer un article par son ID
+// GET one article by ID
 const getArticleById = async (req, res) => {
   try {
     const article = await Article.findById(req.params.id)
@@ -49,7 +46,7 @@ const getArticleById = async (req, res) => {
   } catch (error) {
     if (error.name === 'CastError') {
       return res.status(400).json({
-        message: 'Invalid resource identifier (ObjectId expected)'
+        message: 'Invalid resource identifier'
       });
     }
 
@@ -59,67 +56,61 @@ const getArticleById = async (req, res) => {
   }
 };
 
-// 3. POST /api/articles
-// Créer un article lié à un utilisateur existant
+// GET articles belonging to the authenticated user
+const getMyArticles = async (req, res) => {
+  try {
+    const articles = await Article.find({
+      author: req.user._id
+    }).populate('author', 'name email');
+
+    return res.status(200).json({
+      total: articles.length,
+      articles
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: error.message
+    });
+  }
+};
+
+// POST create an article
 const createArticle = async (req, res) => {
   try {
-    const { title, content, authorId } = req.body;
+    const { title, content } = req.body;
 
-    const newArticle = await Article.create({
+    if (!title || !content) {
+      return res.status(400).json({
+        message: 'Title and content are required'
+      });
+    }
+
+    const article = await Article.create({
       title,
       content,
-      author: authorId
+      author: req.user._id
     });
 
-    await newArticle.populate('author', 'name email');
+    await article.populate('author', 'name email');
 
-    return res.status(201).json({
-      message: 'Article créé',
-      article: newArticle
-    });
+    return res.status(201).json(article);
   } catch (error) {
-    if (
-      error.name === 'ValidationError' ||
-      error.name === 'CastError'
-    ) {
+    if (error.name === 'ValidationError') {
       return res.status(400).json({
-        error: error.message
+        message: error.message
       });
     }
 
     return res.status(500).json({
-      error: error.message
+      message: error.message
     });
   }
 };
 
-// 4. PUT /api/articles/:id
-// Modifier un article
+// PUT update an article (owner or admin only)
 const updateArticle = async (req, res) => {
   try {
-    const { title, content, authorId } = req.body;
-    const updates = {};
-
-    if (title !== undefined) {
-      updates.title = title;
-    }
-
-    if (content !== undefined) {
-      updates.content = content;
-    }
-
-    if (authorId !== undefined) {
-      updates.author = authorId;
-    }
-
-    const article = await Article.findByIdAndUpdate(
-      req.params.id,
-      updates,
-      {
-        new: true,
-        runValidators: true
-      }
-    ).populate('author', 'name email');
+    const article = await Article.findById(req.params.id);
 
     if (!article) {
       return res.status(404).json({
@@ -127,31 +118,42 @@ const updateArticle = async (req, res) => {
       });
     }
 
-    return res.status(200).json({
-      message: 'Article mis à jour',
-      article
-    });
+    const isOwner =
+      article.author.toString() === req.user._id.toString();
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({
+        message: 'Not authorized to update this article'
+      });
+    }
+
+    const { title, content } = req.body;
+
+    if (title !== undefined) article.title = title;
+    if (content !== undefined) article.content = content;
+
+    await article.save();
+    await article.populate('author', 'name email');
+
+    return res.status(200).json(article);
   } catch (error) {
-    if (
-      error.name === 'ValidationError' ||
-      error.name === 'CastError'
-    ) {
+    if (error.name === 'CastError') {
       return res.status(400).json({
-        error: error.message
+        message: 'Invalid resource identifier'
       });
     }
 
     return res.status(500).json({
-      error: error.message
+      message: error.message
     });
   }
 };
 
-// 5. DELETE /api/articles/:id
-// Supprimer un article
+// DELETE an article (owner or admin only)
 const deleteArticle = async (req, res) => {
   try {
-    const article = await Article.findByIdAndDelete(req.params.id);
+    const article = await Article.findById(req.params.id);
 
     if (!article) {
       return res.status(404).json({
@@ -159,14 +161,25 @@ const deleteArticle = async (req, res) => {
       });
     }
 
+    const isOwner =
+      article.author.toString() === req.user._id.toString();
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({
+        message: 'Not authorized to delete this article'
+      });
+    }
+
+    await Article.findByIdAndDelete(req.params.id);
+
     return res.status(200).json({
-      message: 'Article supprimé avec succès',
-      article
+      message: 'Article deleted successfully'
     });
   } catch (error) {
     if (error.name === 'CastError') {
       return res.status(400).json({
-        message: 'Invalid resource identifier (ObjectId expected)'
+        message: 'Invalid resource identifier'
       });
     }
 
@@ -176,10 +189,10 @@ const deleteArticle = async (req, res) => {
   }
 };
 
-// Exporter les fonctions
 module.exports = {
   getAllArticles,
   getArticleById,
+  getMyArticles,
   createArticle,
   updateArticle,
   deleteArticle

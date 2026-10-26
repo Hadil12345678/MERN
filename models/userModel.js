@@ -21,6 +21,12 @@ const userSchema = new mongoose.Schema(
       ]
     },
 
+    password: {
+      type: String,
+      required: [true, 'Password is required'],
+      minlength: [6, 'Password must be at least 6 characters']
+    },
+
     age: {
       type: Number,
       min: [4, 'Minimum age is 4 years old'],
